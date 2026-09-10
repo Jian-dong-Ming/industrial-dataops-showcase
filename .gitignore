@@ -1,0 +1,14 @@
+.vscode/*
+!.vscode/extensions.json
+.env
+.env.ai
+/data/
+__pycache__/
+.reports/
+!.env.example
+node_modules/
+backend/app/frontend/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

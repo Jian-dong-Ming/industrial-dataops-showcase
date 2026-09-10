@@ -1,0 +1,73 @@
+flowchart TB
+    classDef ui fill:#E8F1FF,stroke:#2563EB,color:#172554
+    classDef api fill:#ECFDF5,stroke:#059669,color:#022C22
+    classDef domain fill:#F5F3FF,stroke:#7C3AED,color:#2E1065
+    classDef data fill:#F8FAFC,stroke:#475569,color:#0F172A
+    classDef cross fill:#FEFCE8,stroke:#CA8A04,color:#422006
+
+    UI[React / TanStack Router / TanStack Query<br/>生成式 TypeScript API Client]:::ui
+    API[FastAPI app.main<br/>/api/v1 路由聚合]:::api
+    Auth[登录、JWT、密码哈希]:::cross
+    Permission[RBAC + user_plant_access<br/>管理员 / 工程师 / 观察者]:::cross
+    Config[Pydantic Settings<br/>环境变量、白名单、存储与批大小]:::cross
+
+    subgraph Routers[接口层]
+        RUser[users / login]:::api
+        RAsset[plants / production-lines<br/>devices / tags]:::api
+        RImport[imports]:::api
+        RAcquire[acquisition]:::api
+        RUtils[utils / health]:::api
+    end
+
+    subgraph Domains[领域与应用服务]
+        AssetDomain[资产层级、状态切换<br/>编码唯一性与范围校验]:::domain
+        ImportReader[reader<br/>CSV/XLSX 流式读取、编码检测、预览]:::domain
+        ImportProcessor[processor<br/>宽窄表标准化、质量校验、分块事务]:::domain
+        OpcClient[opcua client / collector<br/>浏览、订阅、重连、写入]:::domain
+        Simulator[opcua simulator<br/>可重复的本地工业信号]:::domain
+    end
+
+    subgraph Database[PostgreSQL 18：配置关系模型 + 窄表时序事实]
+        U[(user)]:::data
+        UA[(user_plant_access)]:::data
+        P[(plant)]:::data
+        L[(production_line)]:::data
+        D[(device)]:::data
+        T[(tag)]:::data
+        AT[(acquisition_task)]:::data
+        AN[(acquisition_node)]:::data
+        IB[(import_batch<br/>mapping_config)]:::data
+        IFM[(import_field_mapping)]:::data
+        DQI[(data_quality_issue)]:::data
+        TS[(tag_sample<br/>JSON value + numeric_value)]:::data
+        RV[(v_tag_sample_readable)]:::data
+    end
+
+    UI --> API
+    API --> Auth
+    API --> Permission
+    API --> Config
+    API --> RUser
+    API --> RAsset
+    API --> RImport
+    API --> RAcquire
+    API --> RUtils
+    RAsset --> AssetDomain
+    RImport --> ImportReader --> ImportProcessor
+    RAcquire --> OpcClient
+    OpcClient --> Simulator
+
+    U --> UA --> P
+    P --> L --> D --> T
+    P --> AT --> AN --> T
+    P --> IB --> IFM
+    IB --> DQI
+    IB --> TS
+    AT --> TS
+    T --> TS --> RV
+    AssetDomain --> P
+    ImportProcessor --> IB
+    ImportProcessor --> DQI
+    ImportProcessor --> TS
+    OpcClient --> AT
+    OpcClient --> TS

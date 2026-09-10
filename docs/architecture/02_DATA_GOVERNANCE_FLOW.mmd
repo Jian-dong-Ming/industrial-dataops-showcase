@@ -1,0 +1,39 @@
+flowchart TD
+    classDef input fill:#FFF7ED,stroke:#EA580C,color:#431407
+    classDef step fill:#ECFDF5,stroke:#059669,color:#022C22
+    classDef decision fill:#FEFCE8,stroke:#CA8A04,color:#422006
+    classDef store fill:#F8FAFC,stroke:#475569,color:#0F172A
+    classDef error fill:#FEF2F2,stroke:#DC2626,color:#450A0A
+
+    Upload[工程师选择工厂并上传 CSV / XLSX]:::input --> Guard{扩展名、50 MB 上限<br/>工厂写权限}:::decision
+    Guard -->|失败| RejectUpload[HTTP 4xx；不保留无效文件]:::error
+    Guard -->|通过| Hash[分块写入 E 盘<br/>同时计算 SHA-256]:::step
+    Hash --> Duplicate{同工厂是否已有<br/>相同内容批次}:::decision
+    Duplicate -->|是| DupBatch[记录 duplicate_of_id<br/>不重复保存、不重复入库]:::step
+    Duplicate -->|否| Inspect[识别 UTF-8/GB18030<br/>或读取 XLSX 活动工作表<br/>返回前 20 行预览]:::step
+    Inspect --> Layout{确认源表结构}:::decision
+
+    Layout -->|窄表| LongMap[映射：数据时间、测点编码、测量值<br/>可选：设备编码、质量码]:::step
+    Layout -->|宽表| WideMap[映射：数据时间<br/>每个测量列 → 具体设备 · 测点<br/>不选择的列明确跳过]:::step
+    LongMap --> PersistMap[保存完整 mapping_config JSON<br/>并保存字段映射索引]:::store
+    WideMap --> PersistMap
+    PersistMap --> Validate[流式逐行读取与标准化<br/>本地无时区时间按 Asia/Shanghai 解释]:::step
+
+    Validate --> Rules{质量规则}:::decision
+    Rules --> R1[必填项 / 时间格式 / 数值类型]:::step
+    Rules --> R2[启用资产与测点存在性<br/>同名测点歧义检查]:::step
+    Rules --> R3[上下限 / 质量码 / 文件内重复]:::step
+    R1 --> Chunk
+    R2 --> Chunk
+    R3 --> Chunk[按 IMPORT_CHUNK_SIZE 分块]:::step
+    Chunk --> Existing{数据库中是否已有<br/>同测点 + 同源时间}:::decision
+    Existing -->|是| Issue[记录质量问题<br/>拒绝或警告，并可导出 CSV]:::error
+    Existing -->|否| Insert[PostgreSQL ON CONFLICT DO NOTHING<br/>事务内批量写 tag_sample]:::store
+    Issue --> Summary
+    Insert --> Summary[批次统计：测量记录、接收、拒绝<br/>重复、警告行、问题数]:::step
+    Summary --> View[(v_tag_sample_readable<br/>保留来源类型与导入批次)]:::store
+    Summary --> Cleanup[可删除 E 盘源文件<br/>不删除批次、质量结果与已入库数据]:::step
+
+    Fail[处理中发生未预期异常]:::error --> Rollback[回滚该批次所有样本<br/>批次标记 failed 并保存错误]:::error
+    Validate -. 异常 .-> Fail
+    Chunk -. 异常 .-> Fail

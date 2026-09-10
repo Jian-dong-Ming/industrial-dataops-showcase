@@ -1,0 +1,62 @@
+flowchart LR
+    classDef actor fill:#E8F1FF,stroke:#2563EB,color:#172554,stroke-width:1.5px
+    classDef source fill:#FFF7ED,stroke:#EA580C,color:#431407,stroke-width:1.5px
+    classDef app fill:#ECFDF5,stroke:#059669,color:#022C22,stroke-width:1.5px
+    classDef service fill:#F5F3FF,stroke:#7C3AED,color:#2E1065,stroke-width:1.5px
+    classDef store fill:#F8FAFC,stroke:#475569,color:#0F172A,stroke-width:1.5px
+    classDef ops fill:#FEFCE8,stroke:#CA8A04,color:#422006,stroke-width:1.5px
+
+    subgraph Users[使用者与权限边界]
+        Admin[管理员<br/>用户、工厂授权、全部资产]:::actor
+        Engineer[工程师<br/>资产配置、导入、采集任务]:::actor
+        Observer[观察者<br/>只读查询与质量查看]:::actor
+    end
+
+    subgraph Sources[工业数据源]
+        Files[CSV / XLSX<br/>历史宽表或窄表]:::source
+        Sim[内置 OPC UA 模拟器<br/>NoSecurity，仅本机演示]:::source
+        Real[真实 OPC UA Server<br/>PLC / 网关 / SCADA]:::source
+    end
+
+    subgraph Platform[Industrial DataOps Platform]
+        Web[React + TypeScript 前端<br/>中文工作台 / 资产 / 治理 / 采集]:::app
+        API[FastAPI REST API<br/>JWT、RBAC、工厂级数据权限]:::app
+        Asset[工业资产域<br/>工厂 → 产线 → 设备 → 测点]:::service
+        Import[数据治理域<br/>预览、映射、校验、去重、质量报告]:::service
+        Acquire[实时采集域<br/>浏览、订阅、断线重连、批量写入]:::service
+        Query[查询服务<br/>可读视图、最新值、历史趋势]:::service
+    end
+
+    subgraph Storage[数据与文件]
+        PG[(PostgreSQL 18<br/>业务配置、采集任务、窄表测点样本)]:::store
+        EDrive[(E 盘导入源文件<br/>批次目录 + SHA-256)]:::store
+        View[(v_tag_sample_readable<br/>UUID → 工厂/设备/测点可读字段)]:::store
+    end
+
+    subgraph Runtime[运行与交付]
+        Docker[Docker Compose<br/>backend / db / adminer / mail / OPC UA]:::ops
+        CI[GitHub Actions<br/>91 个后端测试、覆盖率门禁、4 分片 E2E、安全扫描]:::ops
+        Git[GitHub 私有仓库<br/>PR、保护分支、版本标签]:::ops
+    end
+
+    Admin --> Web
+    Engineer --> Web
+    Observer --> Web
+    Web -->|HTTPS / JSON| API
+    API --> Asset
+    API --> Import
+    API --> Acquire
+    API --> Query
+    Files --> Import
+    Sim --> Acquire
+    Real -. 生产接入需证书与白名单 .-> Acquire
+    Asset --> PG
+    Import -->|源文件| EDrive
+    Import -->|标准化样本与质量问题| PG
+    Acquire -->|实时样本与运行状态| PG
+    Query --> View
+    View --> PG
+    Docker --> Platform
+    Docker --> Storage
+    Git --> CI
+    CI -->|校验通过后合并| Git

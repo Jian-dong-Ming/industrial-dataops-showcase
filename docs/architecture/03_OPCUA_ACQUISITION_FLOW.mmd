@@ -1,0 +1,33 @@
+flowchart LR
+    classDef source fill:#FFF7ED,stroke:#EA580C,color:#431407
+    classDef api fill:#E8F1FF,stroke:#2563EB,color:#172554
+    classDef worker fill:#F5F3FF,stroke:#7C3AED,color:#2E1065
+    classDef store fill:#F8FAFC,stroke:#475569,color:#0F172A
+    classDef state fill:#ECFDF5,stroke:#059669,color:#022C22
+    classDef warn fill:#FEF2F2,stroke:#DC2626,color:#450A0A
+
+    Server[OPC UA Server<br/>内置模拟器或真实设备]:::source --> Guard{endpoint_url 校验<br/>opc.tcp + 主机白名单}:::api
+    Guard -->|不允许| Block[拒绝 SSRF 风险地址]:::warn
+    Guard -->|允许| Browse[API 临时连接并浏览节点<br/>深度与节点数量均有限制]:::api
+    Browse --> Map[工程师将 NodeId<br/>映射到平台启用测点]:::api
+    Map --> Task[(acquisition_task<br/>期望状态、连接状态、计数器)]:::store
+    Map --> Node[(acquisition_node<br/>NodeId → tag_id)]:::store
+
+    Task --> Supervisor[独立 Collector 进程<br/>轮询待运行任务]:::worker
+    Supervisor --> Connecting[connecting]:::state
+    Connecting --> Client[AsyncUa Client<br/>创建订阅与数据变更回调]:::worker
+    Client --> Connected[connected]:::state
+    Connected --> Queue[有界内存队列<br/>OPCUA_SAMPLE_QUEUE_SIZE]:::worker
+    Queue --> Writer[批量写入器<br/>类型转换、质量码、去重]:::worker
+    Writer --> Samples[(tag_sample<br/>source_type = opcua)]:::store
+    Writer --> Metrics[更新 samples_received / written<br/>duplicate / dropped / last_sample_at]:::store
+    Samples --> Latest[最新值查询]:::api
+    Samples --> Trend[时间范围历史趋势]:::api
+
+    Client -->|断线或超时| Reconnecting[reconnecting<br/>递增 error / reconnect]:::state
+    Reconnecting -->|退避后重试| Client
+    Reconnecting -->|持续失败| ErrorState[error + last_error]:::warn
+    Task -->|desired_state = stopped| Stopped[stopped<br/>取消订阅并断开]:::state
+
+    Note[边界：当前模拟器为 NoSecurity。<br/>真实产线必须补证书信任、SignAndEncrypt、凭据保护与网络隔离。]:::warn
+    Note -. 生产约束 .-> Server

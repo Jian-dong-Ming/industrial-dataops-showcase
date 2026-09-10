@@ -1,0 +1,14 @@
+.git
+.env
+.env.ai
+**/.env.ai
+**/__pycache__
+**/.venv
+backend/htmlcov
+backend/app/frontend
+frontend/blob-report
+frontend/dist
+frontend/node_modules
+frontend/playwright-report
+frontend/test-results
+node_modules
