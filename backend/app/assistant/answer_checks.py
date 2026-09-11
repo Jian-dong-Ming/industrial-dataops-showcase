@@ -152,6 +152,19 @@ def attach_data_cautions(answer: GeneratedAnswer, evidence: list[Evidence]) -> N
         if item.kind == "tool"
         and item.title in {"tag_trend", "acquisition_status", "asset_overview"}
     ]
+    # Repeated full-factory reads (including a prefetched snapshot followed by
+    # a model tool call) must not render duplicate or contradictory snapshots.
+    # Keep the last read, not a sum. Distinct tag trends remain separate.
+    last_snapshot = {
+        item.title: item.id
+        for item in operations
+        if item.title in {"acquisition_status", "asset_overview"}
+    }
+    operations = [
+        item
+        for item in operations
+        if item.title not in last_snapshot or item.id == last_snapshot[item.title]
+    ]
     if (batches or latest or operations) and answer.status == "answered":
         # Counts and issue categories are deterministic business facts. Do not
         # ask the LLM to rewrite them (e.g. confusing warnings with failed rows).
