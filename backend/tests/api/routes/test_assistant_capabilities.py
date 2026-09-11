@@ -100,6 +100,62 @@ def test_model_skipping_tool_cannot_invent_task_count(
     assert audit and audit.tool_names == ["acquisition_status"]
 
 
+@pytest.mark.parametrize("repair_succeeds", [True, False])
+def test_unsupported_provenance_has_one_bounded_repair(
+    client: TestClient,
+    db: Session,
+    scope: tuple,
+    fake_provider: type,
+    repair_succeeds: bool,
+) -> None:
+    plant, _, _, headers = scope
+    calls = 0
+
+    def callback(messages: list, tools: object) -> dict:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            assert tools is None
+            assert (
+                json.loads(messages[-1]["content"])["validation_error"]
+                == "unsupported_database_provenance_claim"
+            )
+        return {
+            "content": json.dumps(
+                {
+                    "status": "no_answer",
+                    "answer": "本次检索缺少昨天良率的企业记录，无法计算。"
+                    if calls == 2 and repair_succeeds
+                    else "没有依据，平台所有数据均为合成数据。",
+                    "citation_ids": [],
+                }
+            )
+        }
+
+    fake_provider.callback = staticmethod(callback)
+    response = client.post(
+        f"{settings.API_V1_STR}/assistant/ask",
+        headers=headers,
+        json={
+            "plant_id": str(plant.id),
+            "question": "昨天企业良率提升了多少",
+            "allow_external_processing": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert calls == 2 and body["status"] == "no_answer"
+    assert "所有数据" not in body["answer"]
+    if repair_succeeds:
+        assert "本次检索缺少" in body["answer"]
+    else:
+        assert "未展示不可靠内容" in body["answer"]
+    audit = db.get(AssistantRun, uuid.UUID(body["run_id"]))
+    assert audit and audit.error_code == (
+        None if repair_succeeds else "unsupported_database_provenance_claim"
+    )
+
+
 @pytest.mark.parametrize(
     "question, expected",
     [

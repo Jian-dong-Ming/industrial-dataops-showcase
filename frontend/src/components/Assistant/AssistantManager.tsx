@@ -500,7 +500,11 @@ function PlantAssistant({
             知识文档用于解释规则和操作方法。测点实时值通过受控业务查询获取，不从文档推测。
           </p>
           {docs.isError && <p role="alert">{errorMessage(docs.error)}</p>}
-          <div className="space-y-2">
+          <section
+            aria-label="知识文档列表"
+            tabIndex={docs.data?.length ? 0 : undefined}
+            className="max-h-[32rem] space-y-2 overflow-y-auto overscroll-contain pr-2"
+          >
             {docs.data?.map((doc) => (
               <div key={doc.id} className="rounded-lg border p-3">
                 <p className="break-words text-sm font-medium">{doc.title}</p>
@@ -552,7 +556,7 @@ function PlantAssistant({
                 暂无文档。工程师或管理员可添加操作说明。
               </p>
             )}
-          </div>
+          </section>
           {canWrite && (
             <form
               className="space-y-3 border-t pt-4"

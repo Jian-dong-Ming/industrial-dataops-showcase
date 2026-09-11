@@ -31,6 +31,43 @@ def conditional_conclusion_error(answer: GeneratedAnswer) -> str | None:
     return None
 
 
+def document_grounding_error(
+    answer: GeneratedAnswer, evidence: list[Evidence], question: str
+) -> str | None:
+    """Bounded guards for observed unsupported claims, not a semantic proof.
+
+    A few retrieved manuals cannot establish the provenance of the whole live
+    database. Likewise a recipe's warning count depends on preserving quality.
+    Never silently turn an unsupported assertion into its opposite.
+    """
+    cited = [item for item in evidence if item.id in answer.citation_ids]
+    source_text = question + "\n" + "\n".join(str(item.data) for item in cited)
+    # Preserve versioned identifiers verbatim; do not invent aliases for them.
+    for identifier in re.findall(
+        r"\b[a-zA-Z][a-zA-Z0-9_-]*[-_]v\d+(?:[._-]\d+)*\b", answer.answer
+    ):
+        if identifier not in source_text:
+            return "unsupported_versioned_identifier"
+    if (
+        re.search(r"quality_code.{0,15}(?:可选|可不映射|可以不映射)", answer.answer)
+        and re.search(r"[1-9]\d*\s*条(?:坏质量)?警告", answer.answer)
+        and any("quality_code" in str(item.data) for item in cited)
+    ):
+        return "quality_mapping_required_for_warning_count"
+    for clause in re.split(r"[。；\n]", answer.answer):
+        if re.search(r"不能|不应|不要|不代表|不足以|未必|不一定|无法断言", clause):
+            continue
+        if re.search(
+            r"(?:所有|全部|全部的|所有的).{0,12}(?:文件|数据).{0,16}(?:均|都|是|为).{0,8}(?:模拟|合成)"
+            r"|(?:文件|数据).{0,12}(?:均为|都是|全是|一律是).{0,8}(?:模拟|合成)"
+            r"|(?:平台|其所涉及的).{0,12}数据来源.{0,8}要么"
+            r"|平台(?:也)?不(?:存储|包含).{0,12}(?:指标|数据|记录)",
+            clause,
+        ):
+            return "unsupported_database_provenance_claim"
+    return None
+
+
 def normalize_explicit_refusal(answer: GeneratedAnswer) -> None:
     """Normalize explicit assistant refusals, not all negative explanations."""
     leading = answer.answer.lstrip(" \n\t*#")

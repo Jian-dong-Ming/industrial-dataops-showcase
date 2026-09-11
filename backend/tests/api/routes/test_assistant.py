@@ -489,7 +489,7 @@ def test_invalid_answers_safely_degrade_after_one_repair(
     )
     assert response.status_code == 200
     assert response.json()["status"] == "no_answer"
-    assert "未通过格式、引用或条件结论检查" in response.json()["answer"]
+    assert "未通过格式、引用、来源或条件结论检查" in response.json()["answer"]
     assert response.json()["citation_ids"] == []
     assert len(calls) == 2 and calls[-1] is None
 
