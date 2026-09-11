@@ -31,6 +31,43 @@ def conditional_conclusion_error(answer: GeneratedAnswer) -> str | None:
     return None
 
 
+def document_grounding_error(
+    answer: GeneratedAnswer, evidence: list[Evidence], question: str
+) -> str | None:
+    """Bounded guards for observed unsupported claims, not a semantic proof.
+
+    A few retrieved manuals cannot establish the provenance of the whole live
+    database. Likewise a recipe's warning count depends on preserving quality.
+    Never silently turn an unsupported assertion into its opposite.
+    """
+    cited = [item for item in evidence if item.id in answer.citation_ids]
+    source_text = question + "\n" + "\n".join(str(item.data) for item in cited)
+    # Preserve versioned identifiers verbatim; do not invent aliases for them.
+    for identifier in re.findall(
+        r"\b[a-zA-Z][a-zA-Z0-9_-]*[-_]v\d+(?:[._-]\d+)*\b", answer.answer
+    ):
+        if identifier not in source_text:
+            return "unsupported_versioned_identifier"
+    if (
+        re.search(r"quality_code.{0,15}(?:可选|可不映射|可以不映射)", answer.answer)
+        and re.search(r"[1-9]\d*\s*条(?:坏质量)?警告", answer.answer)
+        and any("quality_code" in str(item.data) for item in cited)
+    ):
+        return "quality_mapping_required_for_warning_count"
+    for clause in re.split(r"[。；\n]", answer.answer):
+        if re.search(r"不能|不应|不要|不代表|不足以|未必|不一定|无法断言", clause):
+            continue
+        if re.search(
+            r"(?:所有|全部|全部的|所有的).{0,12}(?:文件|数据).{0,16}(?:均|都|是|为).{0,8}(?:模拟|合成)"
+            r"|(?:文件|数据).{0,12}(?:均为|都是|全是|一律是).{0,8}(?:模拟|合成)"
+            r"|(?:平台|其所涉及的).{0,12}数据来源.{0,8}要么"
+            r"|平台(?:也)?不(?:存储|包含).{0,12}(?:指标|数据|记录)",
+            clause,
+        ):
+            return "unsupported_database_provenance_claim"
+    return None
+
+
 def normalize_explicit_refusal(answer: GeneratedAnswer) -> None:
     """Normalize explicit assistant refusals, not all negative explanations."""
     leading = answer.answer.lstrip(" \n\t*#")
@@ -95,6 +132,8 @@ def _operation_facts(item: Evidence) -> str:
         }
         rows = data["tasks"]
         text = "采集状态快照（时间含时区偏移+08:00；计数为累计值，不是本小时计数）：\n"
+        if not data["truncated"]:
+            text += f"当前查询共 {len(rows)} 个采集任务。\n"
         for row in rows[:10]:
             text += (
                 f"{row['name']}：期望{states.get(row['desired_state'], row['desired_state'])}，"
@@ -104,8 +143,10 @@ def _operation_facts(item: Evidence) -> str:
             )
         if not rows:
             text += "当前查询没有采集任务。\n"
-        if data["truncated"] or len(rows) > 10:
+        if data["truncated"]:
             text += "列表已截断，不能据此推断任务总数，请到实时采集页面查看。\n"
+        elif len(rows) > 10:
+            text += "此处仅展示前10个任务，总数以上面的完整查询计数为准。\n"
         return (
             text
             + "连接状态是数据库记录，不保证所有测点实时有效；停止后仍保留历史值，累计错误不等于当前故障。"
@@ -147,6 +188,19 @@ def attach_data_cautions(answer: GeneratedAnswer, evidence: list[Evidence]) -> N
         for item in evidence
         if item.kind == "tool"
         and item.title in {"tag_trend", "acquisition_status", "asset_overview"}
+    ]
+    # Repeated full-factory reads (including a prefetched snapshot followed by
+    # a model tool call) must not render duplicate or contradictory snapshots.
+    # Keep the last read, not a sum. Distinct tag trends remain separate.
+    last_snapshot = {
+        item.title: item.id
+        for item in operations
+        if item.title in {"acquisition_status", "asset_overview"}
+    }
+    operations = [
+        item
+        for item in operations
+        if item.title not in last_snapshot or item.id == last_snapshot[item.title]
     ]
     if (batches or latest or operations) and answer.status == "answered":
         # Counts and issue categories are deterministic business facts. Do not

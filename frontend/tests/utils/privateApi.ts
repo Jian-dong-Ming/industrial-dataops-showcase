@@ -4,7 +4,9 @@ import { PrivateService } from "../../src/client"
 import { client } from "../../src/client/client.gen"
 
 client.setConfig({
-  baseURL: `${process.env.VITE_API_URL}`,
+  // Must target the same instance checked by Playwright's safety gate.
+  // VITE_API_URL from a developer's .env can point at the daily business server.
+  baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173",
 })
 
 export const createUser = async ({

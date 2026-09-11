@@ -20,6 +20,7 @@ import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutAssetsRouteImport } from './routes/_layout/assets'
 import { Route as LayoutAssistantRouteImport } from './routes/_layout/assistant'
 import { Route as LayoutDataGovernanceRouteImport } from './routes/_layout/data-governance'
+import { Route as LayoutDemoRouteImport } from './routes/_layout/demo'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 
 const LayoutRoute = LayoutRouteImport.update({
@@ -76,6 +77,11 @@ const LayoutDataGovernanceRoute = LayoutDataGovernanceRouteImport.update({
   path: '/data-governance',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutDemoRoute = LayoutDemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -93,6 +99,7 @@ export interface FileRoutesByFullPath {
   '/assets': typeof LayoutAssetsRoute
   '/assistant': typeof LayoutAssistantRoute
   '/data-governance': typeof LayoutDataGovernanceRoute
+  '/demo': typeof LayoutDemoRoute
   '/settings': typeof LayoutSettingsRoute
 }
 export interface FileRoutesByTo {
@@ -105,6 +112,7 @@ export interface FileRoutesByTo {
   '/assets': typeof LayoutAssetsRoute
   '/assistant': typeof LayoutAssistantRoute
   '/data-governance': typeof LayoutDataGovernanceRoute
+  '/demo': typeof LayoutDemoRoute
   '/settings': typeof LayoutSettingsRoute
   '/': typeof LayoutIndexRoute
 }
@@ -120,6 +128,7 @@ export interface FileRoutesById {
   '/_layout/assets': typeof LayoutAssetsRoute
   '/_layout/assistant': typeof LayoutAssistantRoute
   '/_layout/data-governance': typeof LayoutDataGovernanceRoute
+  '/_layout/demo': typeof LayoutDemoRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/_layout/': typeof LayoutIndexRoute
 }
@@ -136,6 +145,7 @@ export interface FileRouteTypes {
     | '/assets'
     | '/assistant'
     | '/data-governance'
+    | '/demo'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | '/assets'
     | '/assistant'
     | '/data-governance'
+    | '/demo'
     | '/settings'
     | '/'
   id:
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | '/_layout/assets'
     | '/_layout/assistant'
     | '/_layout/data-governance'
+    | '/_layout/demo'
     | '/_layout/settings'
     | '/_layout/'
   fileRoutesById: FileRoutesById
@@ -253,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutDataGovernanceRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/demo': {
+      id: '/_layout/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof LayoutDemoRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/settings': {
       id: '/_layout/settings'
       path: '/settings'
@@ -269,6 +288,7 @@ interface LayoutRouteChildren {
   LayoutAssetsRoute: typeof LayoutAssetsRoute
   LayoutAssistantRoute: typeof LayoutAssistantRoute
   LayoutDataGovernanceRoute: typeof LayoutDataGovernanceRoute
+  LayoutDemoRoute: typeof LayoutDemoRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
 }
@@ -279,6 +299,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAssetsRoute: LayoutAssetsRoute,
   LayoutAssistantRoute: LayoutAssistantRoute,
   LayoutDataGovernanceRoute: LayoutDataGovernanceRoute,
+  LayoutDemoRoute: LayoutDemoRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
 }

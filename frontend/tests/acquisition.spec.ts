@@ -124,7 +124,9 @@ for (const scenario of [
         has: page.getByText(scenario.code, { exact: true }),
       })
       await expect(latestRow).toBeVisible({ timeout: 20_000 })
-      await expect(latestRow.getByText("正常")).toBeVisible({ timeout: 20_000 })
+      await expect(latestRow.getByText("质量良好")).toBeVisible({
+        timeout: 20_000,
+      })
       await expect
         .poll(
           async () => {
@@ -145,7 +147,7 @@ for (const scenario of [
       await page.getByRole("tab", { name: "实时趋势" }).click()
       await expect(page.getByRole("combobox")).toContainText(taskName)
       await expect(
-        page.getByRole("img", { name: "测点实时趋势图" }),
+        page.getByRole("img", { name: "测点历史样本趋势图，横轴为采样时间" }),
       ).toBeVisible({
         timeout: 20_000,
       })

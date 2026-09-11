@@ -1,0 +1,97 @@
+# Standalone file: never merge with the daily compose.yml or its data volumes.
+name: industrial-dataops-browser-test
+
+x-test-env: &test-env
+  PROJECT_NAME: Isolated browser tests
+  SECRET_KEY: isolated-browser-test-secret-not-for-production
+  FIRST_SUPERUSER: browser-admin@example.com
+  FIRST_SUPERUSER_PASSWORD: Browser-test-only-2026!
+  DATABASE_URL: postgresql://postgres:browser-test-only@db:5432/app_browser_test
+  BROWSER_TEST_MODE: "true"
+  FASTAPI_ENV: development
+  SMTP_HOST: mailcatcher
+  SMTP_PORT: "1025"
+  SMTP_TLS: "false"
+  EMAILS_FROM_EMAIL: browser-admin@example.com
+  FRONTEND_HOST: http://127.0.0.1:8201
+  IMPORT_STORAGE_DIR: /data/imports
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: browser-test-only
+      POSTGRES_DB: app_browser_test
+    # Disposable small fixture DB in RAM; no host DB port or business volume.
+    tmpfs:
+      - /var/lib/postgresql:size=268435456
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "app_browser_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  backend:
+    image: industrial-dataops-browser-test:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: *test-env
+    command: ["fastapi", "run", "--workers", "1"]
+    ports:
+      - "127.0.0.1:8201:8000"
+    volumes:
+      - ${BROWSER_TEST_DATA_DIR:?Set an isolated E-drive directory}:/data/imports
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  import-worker:
+    image: industrial-dataops-browser-test:local
+    environment: *test-env
+    command: ["python", "-m", "app.data_import.jobs"]
+    volumes:
+      - ${BROWSER_TEST_DATA_DIR:?Set an isolated E-drive directory}:/data/imports:ro
+    depends_on:
+      db:
+        condition: service_healthy
+  opcua-simulator:
+    image: industrial-dataops-browser-test:local
+    environment: *test-env
+    command: ["python", "-m", "app.opcua.simulator"]
+  opcua-collector:
+    image: industrial-dataops-browser-test:local
+    environment: *test-env
+    command: ["python", "-m", "app.opcua.collector"]
+    depends_on:
+      db:
+        condition: service_healthy
+  mailcatcher:
+    image: schickling/mailcatcher
+    ports:
+      - "127.0.0.1:1081:1080"
+  playwright:
+    profiles: ["tests"]
+    image: industrial-dataops-browser-test-playwright:local
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.playwright
+    ipc: host
+    environment:
+      FIRST_SUPERUSER: browser-admin@example.com
+      FIRST_SUPERUSER_PASSWORD: Browser-test-only-2026!
+      PLAYWRIGHT_BASE_URL: http://backend:8000
+      MAILCATCHER_HOST: http://mailcatcher:1080
+      PLAYWRIGHT_HTML_OPEN: never
+    volumes:
+      - ${BROWSER_TEST_DATA_DIR}/../report:/app/frontend/playwright-report
+      - ${BROWSER_TEST_DATA_DIR}/../results:/app/frontend/test-results
+    depends_on:
+      backend:
+        condition: service_healthy
+      mailcatcher:
+        condition: service_started

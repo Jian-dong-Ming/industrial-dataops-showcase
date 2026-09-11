@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   Activity,
   Cpu,
@@ -15,6 +15,7 @@ import {
 import { DashboardService } from "@/client"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import useAuth from "@/hooks/useAuth"
@@ -99,6 +100,16 @@ function Dashboard() {
           当前数据按你的工厂权限统计，每 30 秒自动刷新。
         </p>
       </div>
+
+      <Alert>
+        <AlertTitle>先看业务过程，再看实际运行数据</AlertTitle>
+        <AlertDescription>
+          场景回放提供固定的正常、扰动和恢复片段；下方数字来自你有权限的数据库记录，两者不混用。
+          <Button asChild variant="outline" className="mt-2 w-fit">
+            <Link to="/demo">打开离线合成回放</Link>
+          </Button>
+        </AlertDescription>
+      </Alert>
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
@@ -217,7 +228,7 @@ function Dashboard() {
         <div>
           <h2 className="text-lg font-semibold">已实现能力</h2>
           <p className="text-sm text-muted-foreground">
-            当前版本边界清晰，不包含真实PLC写控制、质量预测或Agent。
+            包含只读AI检索与业务工具；不包含真实PLC写控制、质量预测或自主运维决策。
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

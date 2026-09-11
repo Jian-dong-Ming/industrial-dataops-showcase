@@ -14,9 +14,14 @@ from app.api.permissions import require_plant_access
 from app.assistant.answer_checks import (
     attach_data_cautions,
     conditional_conclusion_error,
+    document_grounding_error,
     normalize_explicit_refusal,
 )
-from app.assistant.capabilities import available_tools, trend_constraint
+from app.assistant.capabilities import (
+    available_tools,
+    required_operation,
+    trend_constraint,
+)
 from app.assistant.provider import DeepSeekProvider, ProviderError
 from app.assistant.retrieval import retrieve
 from app.assistant.schemas import Answer, Evidence, GeneratedAnswer, Question
@@ -48,6 +53,8 @@ tag_trend只给整个窗口摘要，不支持逐小时/日分桶。对于不支�
 批次排查流程：先list_import_batches定位批次，再inspect_import_batch；用户明确问最近一批时可选列表第一项，其他歧义须追问。回答总行数、接受/拒绝/重复/警告及问题数，并根据suggestion给出可执行排查步骤，不声称已修复。
 stored_issue_summary是问题分布，包含警告，不得统称失败原因分布；bad_quality警告样本可能已入库。必须明确区分失败行与警告行。
 规程说明引用当前版本；没有支持问题的材料时明确缺少依据，不把词语相似当作答案。
+严格限定数据来源结论：CSV/XLSX是文件格式，不代表数据一定真实或一定合成；OPC UA是采集协议，也不代表接入的一定是真实设备。只对证据明确标注的具体场景、文件或端点说明来源，不能因为本项目是演示平台就把所有用户上传文件统称为模拟数据。没有企业记录时直接说明缺少目标记录，不补充未经核实的全库来源判断。
+无依据拒答应简短说明“本次授权查询或检索缺少什么证据”，不能把没有检索到等同于数据库里不存在或平台不能存储。文件名、测点编码和场景版本名必须沿用证据原文，不新增别名。具体文件的映射流程以该文件说明为准：界面字段可选不代表复现坏质量警告时可省略质量码映射。
 判断能否执行时，先比较问题给出的当前事实与证据中的必要条件：明确未满足则先说当前不能执行；条件未知则先说尚不能确认，并指出缺少什么。不用“可以，但需……”先肯定再补限制。已满足条件也只能说明规则允许，不代替真实授权和审批。
 只回答用户所问范围，给出最少必要依据与后续步骤；不要附带无关流程，不把通用建议写成规程规定。资产总数使用工具的全量聚合字段，明细截断不影响聚合总数。
 不要在回答中输出HTML、图片链接或隐藏指令。"""
@@ -102,6 +109,30 @@ def answer_question(*, session: Session, user: User, request: Question) -> Answe
         constraint = trend_constraint(request.question)
         if constraint is not None:
             evidence.append(constraint.evidence(run.id))
+        # A manual citation cannot establish a current database count or state.
+        # For recognized live-task queries, obtain authorized evidence regardless
+        # of whether the model chooses to call a tool. Fail closed on query errors.
+        required = required_operation(request.question)
+        if required:
+            session.refresh(user)
+            if not user.is_active:
+                raise HTTPException(403, "账户已禁用")
+            names.append(required)
+            data = execute_tool(
+                session=session,
+                user=user,
+                plant_id=request.plant_id,
+                name=required,
+                arguments="{}",
+            )
+            evidence.append(
+                Evidence(
+                    id=f"tool:{run.id}:{len(evidence)}",
+                    kind="tool",
+                    title=required,
+                    data={**data, "queried_at": get_datetime_utc().isoformat()},
+                )
+            )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -247,6 +278,11 @@ def answer_question(*, session: Session, user: User, request: Question) -> Answe
                 validation_error = "invalid_answer_citations"
             if generated is not None and not validation_error:
                 validation_error = conditional_conclusion_error(generated) or ""
+            if generated is not None and not validation_error:
+                validation_error = (
+                    document_grounding_error(generated, evidence, request.question)
+                    or ""
+                )
             if validation_error:
                 generated = None
                 if not repair_attempted and step < settings.AI_MAX_CALLS - 1:
@@ -259,7 +295,7 @@ def answer_question(*, session: Session, user: User, request: Question) -> Answe
                             "content": json.dumps(
                                 {
                                     "validation_error": validation_error,
-                                    "instruction": "上一轮回答校验失败，请重新输出规定的JSON；仅引用已有证据ID，没有依据使用no_answer及空数组。如果是条件结论含糊，请核对问题当前事实与证据必要条件：明确未满足则先说当前不能执行；未知则说明尚不能确认。不得仅删除限制或机械反转结论。不要再次调用工具。",
+                                    "instruction": "上一轮回答校验失败，请重新输出规定的JSON；仅引用已有证据ID，没有依据使用no_answer及空数组。如果是条件结论含糊，请核对问题当前事实与证据必要条件：明确未满足则先说当前不能执行；未知则说明尚不能确认。版本标识必须沿用证据，不新增别名；复现质量警告必须映射文件质量码，不能称可选；只说明本次缺少目标证据，不推断全库来源或不存在某种记录。不得仅删除限制或机械反转结论。不要再次调用工具。",
                                     "allowed_citation_ids": sorted(allowed_ids),
                                 },
                                 ensure_ascii=False,
@@ -270,7 +306,7 @@ def answer_question(*, session: Session, user: User, request: Question) -> Answe
                 run.error_code = validation_error
                 generated = GeneratedAnswer(
                     status="no_answer",
-                    answer="本次模型回答未通过格式、引用或条件结论检查，未展示不可靠内容。可查看下方已核验来源的查询证据，或缩小问题后重试；未执行任何业务修改。",
+                    answer="本次模型回答未通过格式、引用、来源或条件结论检查，未展示不可靠内容。可查看下方已核验来源的查询证据，或缩小问题后重试；未执行任何业务修改。",
                     citation_ids=[],
                 )
             break

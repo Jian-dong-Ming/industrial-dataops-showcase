@@ -16,6 +16,41 @@ async function setupPlant(page: Page) {
   return plant
 }
 
+test("larger knowledge library stays in a bounded keyboard-scrollable region", async ({
+  page,
+}) => {
+  await setupPlant(page)
+  await page.route("**/api/v1/assistant/documents?**", (route) =>
+    route.fulfill({
+      json: Array.from({ length: 22 }, (_, index) => ({
+        id: crypto.randomUUID(),
+        title: `布局验收知识 ${index + 1}`,
+        content: "合成布局验收说明，不是企业记录。",
+        version: 1,
+        embedding_model: null,
+        content_sha256: "layout-fixture",
+      })),
+    }),
+  )
+  await page.reload()
+  const library = page.getByRole("region", { name: "知识文档列表" })
+  await expect(
+    library.getByText("布局验收知识 22", { exact: true }),
+  ).toHaveCount(1)
+  expect(
+    await library.evaluate((element) => element.clientHeight),
+  ).toBeLessThanOrEqual(512)
+  expect(
+    await library.evaluate((element) => element.scrollHeight),
+  ).toBeGreaterThan(512)
+  await expect(library).toHaveAttribute("tabindex", "0")
+  await library.focus()
+  await page.keyboard.press("End")
+  await expect
+    .poll(() => library.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
+})
+
 test("AI assistant clearly separates missing provider and local search", async ({
   page,
 }) => {

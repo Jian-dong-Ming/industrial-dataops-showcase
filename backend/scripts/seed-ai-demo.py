@@ -38,6 +38,14 @@ def main() -> None:
             ).read_text()
         )["documents"]
     )
+    corpus["documents"].extend(
+        json.loads(
+            (
+                Path(__file__).resolve().parents[1]
+                / "app/assistant/scenario_manuals.json"
+            ).read_text()
+        )["documents"]
+    )
     with Session(engine) as session:
         plant = session.exec(select(Plant).where(Plant.code == "OPC_DEMO")).first()
         admin = session.exec(

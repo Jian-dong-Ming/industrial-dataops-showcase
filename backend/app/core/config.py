@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     FRONTEND_HOST: str = "http://localhost:5173"
     FASTAPI_ENV: Literal["development"] | None = None
+    # Browser tests create persistent records. Opt-in is only valid on a test DB.
+    BROWSER_TEST_MODE: bool = False
 
     PROJECT_NAME: str
     SENTRY_DSN: HttpUrl | None = None
@@ -117,6 +119,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _enforce_non_default_secrets(self) -> Self:
+        if self.BROWSER_TEST_MODE and not (self.DATABASE_URL.path or "").lstrip(
+            "/"
+        ).endswith("_test"):
+            raise ValueError(
+                "BROWSER_TEST_MODE requires a database ending with '_test'"
+            )
         self._check_default_secret("SECRET_KEY", self.SECRET_KEY)
         for host in self.DATABASE_URL.hosts():
             self._check_default_secret("DATABASE_URL password", host["password"])

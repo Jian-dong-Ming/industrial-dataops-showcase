@@ -60,6 +60,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
+import { formatAge, freshnessThresholdMs, timePosition } from "@/lib/telemetry"
 import { handleError } from "@/utils"
 
 const SIMULATOR_ENDPOINT =
@@ -156,15 +157,15 @@ function sampleState(
   const referenceTime = generatedAt
     ? new Date(generatedAt).getTime()
     : Date.now()
-  const ageMs = Math.max(
-    0,
-    referenceTime - new Date(sample.source_timestamp).getTime(),
-  )
-  const ageSeconds = ageMs / 1000
-  const ageText =
-    ageSeconds < 60
-      ? `${ageSeconds.toFixed(1)} 秒`
-      : `${Math.floor(ageSeconds / 60)} 分钟`
+  const ageMs = referenceTime - new Date(sample.source_timestamp).getTime()
+  const ageText = formatAge(ageMs)
+  if (!Number.isFinite(ageMs) || ageMs < -5000) {
+    return {
+      label: "时间异常",
+      className: "border-amber-500/30 text-amber-700 dark:text-amber-300",
+      ageText,
+    }
+  }
   if (sample.is_good === false) {
     return {
       label: "质量异常",
@@ -173,7 +174,7 @@ function sampleState(
       ageText,
     }
   }
-  const staleAfterMs = Math.max(5000, sample.sampling_interval_ms * 3)
+  const staleAfterMs = freshnessThresholdMs(sample.sampling_interval_ms)
   if (ageMs > staleAfterMs) {
     return {
       label: "数据滞后",
@@ -183,7 +184,7 @@ function sampleState(
     }
   }
   return {
-    label: "正常",
+    label: "质量良好",
     className:
       "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
     ageText,
@@ -581,10 +582,16 @@ function NumberField({
 }
 
 function TrendChart({ samples }: { samples: TagSamplePublic[] }) {
-  const numeric = samples.filter(
-    (sample): sample is TagSamplePublic & { numeric_value: number } =>
-      sample.numeric_value !== null,
-  )
+  const numeric = samples
+    .filter(
+      (sample): sample is TagSamplePublic & { numeric_value: number } =>
+        sample.numeric_value !== null &&
+        Number.isFinite(sample.numeric_value) &&
+        Number.isFinite(Date.parse(sample.source_timestamp)),
+    )
+    .sort(
+      (a, b) => Date.parse(a.source_timestamp) - Date.parse(b.source_timestamp),
+    )
   if (numeric.length < 2) {
     return (
       <div className="flex h-72 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
@@ -599,9 +606,14 @@ function TrendChart({ samples }: { samples: TagSamplePublic[] }) {
   const width = 900
   const height = 280
   const padding = 32
+  const firstTime = Date.parse(numeric[0].source_timestamp)
+  const lastTime = Date.parse(numeric[numeric.length - 1].source_timestamp)
   const points = numeric
-    .map((sample, index) => {
-      const x = padding + (index / (numeric.length - 1)) * (width - padding * 2)
+    .map((sample) => {
+      const x =
+        padding +
+        timePosition(Date.parse(sample.source_timestamp), firstTime, lastTime) *
+          (width - padding * 2)
       const y =
         height -
         padding -
@@ -616,9 +628,9 @@ function TrendChart({ samples }: { samples: TagSamplePublic[] }) {
         viewBox={`0 0 ${width} ${height}`}
         className="h-72 w-full"
         role="img"
-        aria-label="测点实时趋势图"
+        aria-label="测点历史样本趋势图，横轴为采样时间"
       >
-        <title>测点实时趋势图</title>
+        <title>测点历史样本趋势图</title>
         <line
           x1={padding}
           y1={padding}
@@ -669,6 +681,13 @@ function TrendChart({ samples }: { samples: TagSamplePublic[] }) {
           最小 {min.toFixed(2)}
         </text>
       </svg>
+      <div className="flex justify-between gap-4 text-xs text-muted-foreground">
+        <span>{formatTime(numeric[0].source_timestamp)}</span>
+        <span>{formatTime(numeric[numeric.length - 1].source_timestamp)}</span>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        横轴按实际采样时间显示；红点表示坏质量，不等同于工艺故障。仅展示当前返回的最近样本，不代表完整时间段。
+      </p>
     </div>
   )
 }
@@ -867,7 +886,7 @@ export default function AcquisitionManager() {
         <MetricCard icon={Gauge} label="累计写入" value={totals.written} />
         <MetricCard
           icon={CircleAlert}
-          label="错误 / 丢弃"
+          label="累计错误 / 丢弃"
           value={`${totals.errors} / ${totals.dropped}`}
         />
       </div>
@@ -1027,9 +1046,27 @@ export default function AcquisitionManager() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                每 2 秒批量刷新一次。超过测点采样周期 3 倍且至少 5
-                秒未更新时，标记为“数据滞后”。
+                每 2 秒查询一次数据库；并不代表每个测点都有新样本。超过采样周期
+                3 倍且至少 60
+                秒未更新，标记为“数据滞后”，与助手使用相同规则。质量良好不等于工艺合格。
               </p>
+              {tasks.find((task) => task.id === latestTaskId)?.desired_state ===
+                "stopped" && (
+                <Alert>
+                  <CircleAlert />
+                  <AlertTitle>采集已停止，以下为最后保存的历史值</AlertTitle>
+                  <AlertDescription>
+                    刷新页面不会恢复采集，也不会产生新数据。请结合数据时间判断，不能作为当前设备状态。
+                  </AlertDescription>
+                </Alert>
+              )}
+              {tasks.find((task) => task.id === latestTaskId)?.endpoint_url ===
+                SIMULATOR_ENDPOINT && (
+                <p className="text-sm text-muted-foreground">
+                  数据来源：内置 OPC UA
+                  模拟器。数值为合成演示信号，不是真实产线数据。
+                </p>
+              )}
               {tasks.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
                   尚未创建采集任务。
@@ -1050,10 +1087,10 @@ export default function AcquisitionManager() {
                     <TableHeader className="sticky top-0 z-10 bg-background">
                       <TableRow>
                         <TableHead>测点</TableHead>
-                        <TableHead>当前值</TableHead>
+                        <TableHead>最新记录值</TableHead>
                         <TableHead>数据状态</TableHead>
                         <TableHead>数据时间</TableHead>
-                        <TableHead>数据延迟</TableHead>
+                        <TableHead>距采样时间</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1197,7 +1234,7 @@ function SampleSummary({ samples }: { samples: TagSamplePublic[] }) {
         </p>
       </div>
       <div className="rounded-lg bg-muted/50 p-3">
-        <p className="text-muted-foreground">窗口内坏质量</p>
+        <p className="text-muted-foreground">已显示样本中的坏质量</p>
         <p className="mt-1 font-medium tabular-nums">{badCount}</p>
       </div>
     </div>

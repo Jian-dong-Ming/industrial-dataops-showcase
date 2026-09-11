@@ -8,13 +8,152 @@ from sqlmodel import Session
 
 from app.assistant import service
 from app.assistant.answer_checks import normalize_explicit_refusal
-from app.assistant.capabilities import available_tools, trend_constraint
+from app.assistant.capabilities import (
+    available_tools,
+    required_operation,
+    trend_constraint,
+)
 from app.assistant.schemas import GeneratedAnswer
 from app.assistant.tools import tool_definitions
 from app.core.config import settings
-from app.models import AssistantRun
+from app.models import AcquisitionTask, AssistantRun
 from tests.api.routes.test_assistant import fake_provider as fake_provider
 from tests.api.routes.test_assistant import scope as scope
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "查询当前实际采集任务共有几个，并说明各自是否停止；不要用离线回放代替。",
+        "请查询当前工厂实际的OPC采集任务，告诉我有几个任务、分别是否正在运行",
+        "现在采集任务的连接状态是什么？",
+        "列出采集任务数量",
+    ],
+)
+def test_task_snapshot_requires_database_evidence(question: str) -> None:
+    assert required_operation(question) == "acquisition_status"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "如何查询当前采集任务是否停止？",
+        "不要查询当前采集任务，解释运行机制。",
+        "只解释采集任务运行状态的含义。",
+        "假设当前采集任务停止，会丢数吗？",
+        "离线回放90秒为什么坏质量？",
+        "当前数据库有多少行？",
+        "我能否查询其他工厂采集任务的状态？",
+    ],
+)
+def test_manual_and_non_query_requests_do_not_prefetch(question: str) -> None:
+    assert required_operation(question) is None
+
+
+def test_model_skipping_tool_cannot_invent_task_count(
+    client: TestClient,
+    db: Session,
+    scope: tuple,
+    fake_provider: type,
+) -> None:
+    plant, other, _, headers = scope
+    for index, owner in enumerate((plant, plant, other)):
+        db.add(
+            AcquisitionTask(
+                plant_id=owner.id,
+                name=f"snapshot-{index}",
+                endpoint_url="opc.tcp://example.invalid:4840",
+            )
+        )
+    db.commit()
+
+    def callback(messages: list, tools: object) -> dict:
+        evidence = json.loads(messages[1]["content"])["evidence"]
+        item = next(e for e in evidence if e["title"] == "acquisition_status")
+        assert len(item["data"]["tasks"]) == 2
+        return {
+            "content": json.dumps(
+                {
+                    "status": "answered",
+                    "answer": "共有999个任务，全部运行正常。",
+                    "citation_ids": [item["id"]],
+                }
+            )
+        }
+
+    fake_provider.callback = staticmethod(callback)
+    response = client.post(
+        f"{settings.API_V1_STR}/assistant/ask",
+        headers=headers,
+        json={
+            "plant_id": str(plant.id),
+            "question": "查询当前实际采集任务共有几个，并说明各自是否停止",
+            "allow_external_processing": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "当前查询共 2 个采集任务" in body["answer"]
+    assert "999" not in body["answer"] and "snapshot-2" not in body["answer"]
+    assert "期望停止" in body["answer"]
+    audit = db.get(AssistantRun, uuid.UUID(body["run_id"]))
+    assert audit and audit.tool_names == ["acquisition_status"]
+
+
+@pytest.mark.parametrize("repair_succeeds", [True, False])
+def test_unsupported_provenance_has_one_bounded_repair(
+    client: TestClient,
+    db: Session,
+    scope: tuple,
+    fake_provider: type,
+    repair_succeeds: bool,
+) -> None:
+    plant, _, _, headers = scope
+    calls = 0
+
+    def callback(messages: list, tools: object) -> dict:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            assert tools is None
+            assert (
+                json.loads(messages[-1]["content"])["validation_error"]
+                == "unsupported_database_provenance_claim"
+            )
+        return {
+            "content": json.dumps(
+                {
+                    "status": "no_answer",
+                    "answer": "本次检索缺少昨天良率的企业记录，无法计算。"
+                    if calls == 2 and repair_succeeds
+                    else "没有依据，平台所有数据均为合成数据。",
+                    "citation_ids": [],
+                }
+            )
+        }
+
+    fake_provider.callback = staticmethod(callback)
+    response = client.post(
+        f"{settings.API_V1_STR}/assistant/ask",
+        headers=headers,
+        json={
+            "plant_id": str(plant.id),
+            "question": "昨天企业良率提升了多少",
+            "allow_external_processing": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert calls == 2 and body["status"] == "no_answer"
+    assert "所有数据" not in body["answer"]
+    if repair_succeeds:
+        assert "本次检索缺少" in body["answer"]
+    else:
+        assert "未展示不可靠内容" in body["answer"]
+    audit = db.get(AssistantRun, uuid.UUID(body["run_id"]))
+    assert audit and audit.error_code == (
+        None if repair_succeeds else "unsupported_database_provenance_claim"
+    )
 
 
 @pytest.mark.parametrize(

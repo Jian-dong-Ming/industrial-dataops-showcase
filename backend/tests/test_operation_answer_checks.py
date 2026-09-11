@@ -70,16 +70,22 @@ def test_task_and_asset_facts_do_not_invent_online_status_or_aliases() -> None:
     assert "期望停止" in text and "最后样本 暂无" in text
     assert "17:00:00+08:00" in text and "写入9 / 丢弃1" in text
     assert "不是本小时计数" in text and "累计错误不等于当前故障" in text
+    assert "当前查询共 1 个采集任务" in text
     assert (
         "没有采集任务"
         in render("acquisition_status", {"tasks": [], "truncated": False}).answer
     )
     assert (
-        "列表已截断"
+        "此处仅展示前10个任务"
         in render(
             "acquisition_status", {"tasks": [task] * 11, "truncated": False}
         ).answer
     )
+    limited = render(
+        "acquisition_status", {"tasks": [task] * 11, "truncated": True}
+    ).answer
+    assert "列表已截断" in limited
+    assert "当前查询共 11" not in limited
     device = {"line": "一号线", "device": "原始设备名", "tag_count": 4}
     text = render(
         "asset_overview", {"line_count": 1, "devices": [device], "truncated": False}
@@ -99,3 +105,44 @@ def test_task_and_asset_facts_do_not_invent_online_status_or_aliases() -> None:
             "asset_overview", {"line_count": 1, "devices": [], "truncated": False}
         ).answer
     )
+
+
+def test_repeated_factory_snapshots_render_only_the_last_read() -> None:
+    task = {
+        "name": "最新任务状态",
+        "desired_state": "stopped",
+        "connection_state": "stopped",
+        "heartbeat_at": None,
+        "last_sample_at": None,
+        "received": 10,
+        "written": 10,
+        "dropped": 0,
+        "duplicates": 0,
+        "errors": 0,
+        "reconnects": 0,
+    }
+    evidence = [
+        Evidence(
+            id="tool:old",
+            kind="tool",
+            title="acquisition_status",
+            data={
+                "tasks": [{**task, "name": "过时任务快照", "desired_state": "running"}],
+                "truncated": False,
+            },
+        ),
+        Evidence(
+            id="tool:new",
+            kind="tool",
+            title="acquisition_status",
+            data={"tasks": [task], "truncated": False},
+        ),
+    ]
+    answer = GeneratedAnswer(
+        status="answered", answer="模型答复", citation_ids=["tool:old"]
+    )
+    attach_data_cautions(answer, evidence)
+    assert answer.answer.count("当前查询共 1 个采集任务") == 1
+    assert answer.answer.count("期望停止") == 1
+    assert "过时任务快照" not in answer.answer
+    assert answer.citation_ids == ["tool:new"]
