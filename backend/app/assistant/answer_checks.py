@@ -95,6 +95,8 @@ def _operation_facts(item: Evidence) -> str:
         }
         rows = data["tasks"]
         text = "采集状态快照（时间含时区偏移+08:00；计数为累计值，不是本小时计数）：\n"
+        if not data["truncated"]:
+            text += f"当前查询共 {len(rows)} 个采集任务。\n"
         for row in rows[:10]:
             text += (
                 f"{row['name']}：期望{states.get(row['desired_state'], row['desired_state'])}，"
@@ -104,8 +106,10 @@ def _operation_facts(item: Evidence) -> str:
             )
         if not rows:
             text += "当前查询没有采集任务。\n"
-        if data["truncated"] or len(rows) > 10:
+        if data["truncated"]:
             text += "列表已截断，不能据此推断任务总数，请到实时采集页面查看。\n"
+        elif len(rows) > 10:
+            text += "此处仅展示前10个任务，总数以上面的完整查询计数为准。\n"
         return (
             text
             + "连接状态是数据库记录，不保证所有测点实时有效；停止后仍保留历史值，累计错误不等于当前故障。"

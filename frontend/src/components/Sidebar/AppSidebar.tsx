@@ -1,4 +1,12 @@
-import { Bot, Database, Factory, Home, RadioTower, Users } from "lucide-react"
+import {
+  Bot,
+  Database,
+  Factory,
+  Home,
+  Play,
+  RadioTower,
+  Users,
+} from "lucide-react"
 
 import { SidebarAppearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
@@ -14,6 +22,7 @@ import { User } from "./User"
 
 const baseItems: Item[] = [
   { icon: Home, title: "工作台", path: "/" },
+  { icon: Play, title: "场景回放", path: "/demo" },
   { icon: Factory, title: "资产管理", path: "/assets" },
   { icon: Database, title: "数据治理", path: "/data-governance" },
   { icon: RadioTower, title: "实时采集", path: "/acquisition" },

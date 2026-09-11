@@ -5,6 +5,7 @@ from app.api.routes import (
     assistant,
     dashboard,
     data_lifecycle,
+    demo,
     devices,
     imports,
     login,
@@ -22,6 +23,7 @@ api_router.include_router(login.router)
 api_router.include_router(users.router)
 api_router.include_router(utils.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(demo.router)
 api_router.include_router(data_lifecycle.router)
 api_router.include_router(plants.router)
 api_router.include_router(production_lines.router)

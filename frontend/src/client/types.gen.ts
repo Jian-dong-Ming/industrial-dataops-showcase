@@ -1566,6 +1566,76 @@ export type Question = {
 export type SampleSourceType = 'opcua' | 'file';
 
 /**
+ * ScenarioFrame
+ */
+export type ScenarioFrame = {
+    /**
+     * Elapsed Seconds
+     */
+    elapsed_seconds: number;
+    /**
+     * Timestamp
+     */
+    timestamp: string;
+    /**
+     * Phase
+     */
+    phase: string;
+    /**
+     * Values
+     */
+    values: {
+        [key: string]: number;
+    };
+    /**
+     * Bad Quality Codes
+     */
+    bad_quality_codes: Array<string>;
+};
+
+/**
+ * ScenarioPoint
+ */
+export type ScenarioPoint = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Line
+     */
+    line: number;
+    /**
+     * Device
+     */
+    device: string;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Minimum
+     */
+    minimum: number;
+    /**
+     * Maximum
+     */
+    maximum: number;
+    /**
+     * Baseline
+     */
+    baseline: number;
+    /**
+     * Purpose
+     */
+    purpose: string;
+};
+
+/**
  * TagCreate
  */
 export type TagCreate = {
@@ -1768,6 +1838,48 @@ export type TagsPublic = {
      * Count
      */
     count: number;
+};
+
+/**
+ * TeachingScenario
+ */
+export type TeachingScenario = {
+    /**
+     * Version
+     */
+    version: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Warning
+     */
+    warning: string;
+    /**
+     * Seed
+     */
+    seed: number;
+    /**
+     * Interval Seconds
+     */
+    interval_seconds: number;
+    /**
+     * Csv Sha256
+     */
+    csv_sha256: string;
+    /**
+     * Points
+     */
+    points: Array<ScenarioPoint>;
+    /**
+     * Frames
+     */
+    frames: Array<ScenarioFrame>;
 };
 
 /**
@@ -2422,6 +2534,26 @@ export type usersReplaceUserPlantAccessResponses = {
 
 export type usersReplaceUserPlantAccessResponse = usersReplaceUserPlantAccessResponses[keyof usersReplaceUserPlantAccessResponses];
 
+export type utilsBrowserTestSafetyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/utils/browser-test-safety/';
+};
+
+export type utilsBrowserTestSafetyResponses = {
+    /**
+     * Response Utils-Browser Test Safety
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: boolean;
+    };
+};
+
+export type utilsBrowserTestSafetyResponse = utilsBrowserTestSafetyResponses[keyof utilsBrowserTestSafetyResponses];
+
 export type utilsTestEmailData = {
     body?: never;
     path?: never;
@@ -2485,6 +2617,36 @@ export type dashboardReadSummaryResponses = {
 };
 
 export type dashboardReadSummaryResponse = dashboardReadSummaryResponses[keyof dashboardReadSummaryResponses];
+
+export type demoReadScenarioData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/demo/scenario';
+};
+
+export type demoReadScenarioResponses = {
+    /**
+     * Successful Response
+     */
+    200: TeachingScenario;
+};
+
+export type demoReadScenarioResponse = demoReadScenarioResponses[keyof demoReadScenarioResponses];
+
+export type demoDownloadScenarioData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/demo/scenario.csv';
+};
+
+export type demoDownloadScenarioResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type dataLifecycleReadCapacityData = {
     body?: never;

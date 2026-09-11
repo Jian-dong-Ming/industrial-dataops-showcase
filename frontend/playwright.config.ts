@@ -13,6 +13,7 @@ const browserChannel = process.env.PLAYWRIGHT_CHANNEL === 'msedge' ? 'msedge' : 
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
+  globalSetup: './tests/global-setup.ts',
   testDir: './tests',
   /* Run tests in files in parallel */
   fullyParallel: true,

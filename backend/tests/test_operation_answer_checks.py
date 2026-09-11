@@ -70,16 +70,22 @@ def test_task_and_asset_facts_do_not_invent_online_status_or_aliases() -> None:
     assert "期望停止" in text and "最后样本 暂无" in text
     assert "17:00:00+08:00" in text and "写入9 / 丢弃1" in text
     assert "不是本小时计数" in text and "累计错误不等于当前故障" in text
+    assert "当前查询共 1 个采集任务" in text
     assert (
         "没有采集任务"
         in render("acquisition_status", {"tasks": [], "truncated": False}).answer
     )
     assert (
-        "列表已截断"
+        "此处仅展示前10个任务"
         in render(
             "acquisition_status", {"tasks": [task] * 11, "truncated": False}
         ).answer
     )
+    limited = render(
+        "acquisition_status", {"tasks": [task] * 11, "truncated": True}
+    ).answer
+    assert "列表已截断" in limited
+    assert "当前查询共 11" not in limited
     device = {"line": "一号线", "device": "原始设备名", "tag_count": 4}
     text = render(
         "asset_overview", {"line_count": 1, "devices": [device], "truncated": False}

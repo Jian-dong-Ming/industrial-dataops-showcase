@@ -14,6 +14,29 @@ TREND = re.compile(r"趋势|变化|均值|平均|最大|最小|统计|极值")
 GROUPING = re.compile(r"每(?:个)?(?:小时|天|日|分钟)|逐(?:小时|日)|按(?:小时|天|分钟)")
 
 
+def required_operation(question: str) -> str | None:
+    """Recognize narrow current-task queries, not general intent or authorization.
+
+    Manuals, hypothetical questions and explicit non-query requests must not be
+    silently substituted with a live snapshot. Unknown wording remains with the
+    normal tool loop; this guard is deliberately not a universal NLU claim.
+    """
+    if not re.search(r"采集任务", question):
+        return None
+    if re.search(
+        r"如何|怎么|怎样|步骤|假设|假如|如果|能否|能不能|是否可以|"
+        r"(?:不要|不用|无需|不必|禁止)(?:去|再)?(?:查|查询|读取)|"
+        r"(?:只|仅)(?:解释|说明|讨论|看)",
+        question,
+    ):
+        return None
+    if re.search(r"当前|现在|实际|查询|查一下|列出", question) and re.search(
+        r"几个|多少|数量|总数|共有|状态|是否|运行|停止|连接|丢数", question
+    ):
+        return "acquisition_status"
+    return None
+
+
 def _number(token: str) -> float:
     if token == "半":
         return 0.5

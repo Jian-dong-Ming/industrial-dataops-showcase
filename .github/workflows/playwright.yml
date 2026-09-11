@@ -41,6 +41,11 @@ jobs:
             - .github/workflows/playwright.yml
 
   test-playwright:
+    env:
+      POSTGRES_DB: app_browser_test
+      BROWSER_TEST_MODE: "true"
+      # SDK generation imports Settings outside Docker; keep its DSN consistent too.
+      DATABASE_URL: postgresql://postgres:changethis@localhost:5432/app_browser_test
     needs:
       - changes
     if: ${{ needs.changes.outputs.changed == 'true' }}
@@ -77,6 +82,9 @@ jobs:
     - run: uv sync
       working-directory: backend
     - run: bun ci
+      working-directory: frontend
+    - name: Check time and trend helpers
+      run: bun test unit-tests
       working-directory: frontend
     - run: bash scripts/generate-client.sh
     - run: docker compose build
